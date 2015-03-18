@@ -170,6 +170,17 @@ alias Vec3(T) = Vec!(T, 3);
 alias Vec4(T) = Vec!(T, 4);
 
 /**
+ * (standard/euclidean) inner product of two vectors
+ */
+T dot(T, size_t N)(Vec!(T,N) a, Vec!(T,N) b)
+{
+	T sum = T(0);
+	for(size_t i = 0; i < N; ++i)
+		sum = sum + a[i]*b[i];
+	return sum;
+}
+
+/**
  * (z-component of the) crossproduct of two vectors
  */
 T cross(T)(Vec2!T a, Vec2!T b)
