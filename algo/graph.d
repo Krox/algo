@@ -5,7 +5,7 @@ private import std.random;
 private import std.stdio;
 private import std.typetuple;
 private import std.typecons;
-private import std.math : sqrt;
+private import std.math : sqrt, isnan;
 private import std.conv : to;
 
 import jive.array;
@@ -90,7 +90,7 @@ class Graph(bool directed, Label...)
 		f.writefln("%s %s {", directed?"digraph":"graph", name);
 
 		//f.writefln("node [label=\"\\N\"];");
-		if(sizeX != float.nan && sizeY != float.nan)
+		if(!isnan(sizeX) && !isnan(sizeY))
 			f.writefln("graph [bb=\"0,0,%s,%s\"];", sizeX, sizeY);
 
 		for(int a = 0; a < numVertices; ++a)
