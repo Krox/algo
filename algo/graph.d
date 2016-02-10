@@ -1,11 +1,11 @@
 module algo.graph;
 
-private import std.process : system;
+private import std.process : executeShell;
 private import std.random;
 private import std.stdio;
 private import std.typetuple;
 private import std.typecons;
-private import std.math : sqrt, isnan;
+private import std.math : sqrt, isNaN;
 private import std.conv : to;
 
 import jive.array;
@@ -90,7 +90,7 @@ class Graph(bool directed, Label...)
 		f.writefln("%s %s {", directed?"digraph":"graph", name);
 
 		//f.writefln("node [label=\"\\N\"];");
-		if(!isnan(sizeX) && !isnan(sizeY))
+		if(!isNaN(sizeX) && !isNaN(sizeY))
 			f.writefln("graph [bb=\"0,0,%s,%s\"];", sizeX, sizeY);
 
 		for(int a = 0; a < numVertices; ++a)
@@ -113,9 +113,9 @@ class Graph(bool directed, Label...)
 	void show()
 	{
 		writeDot("tmp_"~name~".dot");
-		system(layout~" "~"tmp_"~name~".dot -Tsvg > "~"tmp_"~name~".svg");
-		system("eog "~"tmp_"~name~".svg");
-		system("rm "~"tmp_"~name~".dot "~"tmp_"~name~".svg");
+		executeShell(layout~" "~"tmp_"~name~".dot -Tsvg > "~"tmp_"~name~".svg");
+		executeShell("eog "~"tmp_"~name~".svg");
+		executeShell("rm "~"tmp_"~name~".dot "~"tmp_"~name~".svg");
 	}
 
 	static if(Label.length == 0)
