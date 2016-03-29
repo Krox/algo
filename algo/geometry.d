@@ -195,3 +195,35 @@ bool ccw(T)(Vec2!T a, Vec2!T b, Vec2!T c)
 {
 	return cross!T(b-a, c-a) > 0;
 }
+
+/**
+ * Determines if three points are exactly in one line.
+ */
+bool colinear(T)(Vec2!T a, Vec2!T b, Vec2!T c)
+{
+	return cross!T(b-a, c-a) == 0;
+}
+
+/**
+ * Determines if the line segments (a1-a2) and (b1-b2) intersect.
+ * Border points do not count.
+ */
+bool lineIntersect(T)(Vec2!T a1, Vec2!T a2, Vec2!T b1, Vec2!T b2)
+{
+	if(colinear!T(a1, a2, b1))
+		return false;
+	if(colinear!T(a1, a2, b2))
+		return false;
+	if(colinear!T(a1, b1, b2))
+		return false;
+	if(colinear!T(a2, b1, b2))
+		return false;
+
+	if(ccw!T(a1, b1, b2) == ccw!T(a2, b1, b2))
+		return false;
+
+	if(ccw!T(b1, a1, a2) == ccw!T(b2, a1, a2))
+		return false;
+
+	return true;
+}
