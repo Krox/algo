@@ -7,27 +7,21 @@ private import std.typetuple;
 private import std.typecons;
 private import std.math : sqrt, isNaN;
 private import std.conv : to;
-private import std.algorithm : min, max, move, sort;
+private import std.algorithm : min, max, move, sort, swap;
 private import jive.array;
 private import jive.bitarray;
+private import jive.unionfind;
 
 /**
- * directed or undirected (multi-)graph with optionally labeled edges
- * TODO: decide what type to use for vertex identifiers (int/long/size_t ?).
+ * Directed or undirected (multi-)graph with optionally labeled edges.
+ * Mostly for convenience, as all algorithms should be templated to work with
+ * any graph structure that supports (a subset of) the methods
+ * n, m, succ, pred.
  */
-class Graph(bool directed = false, Label...)
+struct Graph(bool directed = false, Label...)
 {
 	static struct HalfEdge
 	{
-		int to;
-		Label label;
-
-		alias to this;
-	}
-
-	static struct Edge
-	{
-		int from;
 		int to;
 		Label label;
 	}
@@ -44,7 +38,7 @@ class Graph(bool directed = false, Label...)
 	Array!(Tuple!(float,float)) pos;
 
 	/** constructor for empty graph */
-	this(size_t n = 0)
+	this(size_t n)
 	{
 		assert(n <= int.max);
 		g.resize(n);
@@ -81,12 +75,6 @@ class Graph(bool directed = false, Label...)
 	float ratio() const nothrow @safe @property
 	{
 		return cast(float)m / n;
-	}
-
-	/** ignores edge labels */
-	int diameter() const @property
-	{
-		return new FloydWarshall!int(this).diameter;
 	}
 
 	/** add a new vertex, returns its number */
@@ -127,94 +115,44 @@ class Graph(bool directed = false, Label...)
 	}
 
 	/** test wether a certainedge exists */
-	bool hasEdge(int from, int to) const nothrow
+	bool hasEdge(int from, int to) const
 	{
 		foreach(e; succ(from))
-			if(e.to == to)
+			if(e == to)
 				return true;
 		return false;
 	}
 
-	/**
-	 * tests if there is a path a->b.
-	 * Uses a trivial O(n+m) dfs. For a more sophisticated
-	 * approach, use the Reachability class
-	 */
-	bool hasPath(int from, int to) const
+	struct Range
 	{
-		if(from == to)
-			return true;
+		const(HalfEdge)[] arr;
 
-		auto v = BitArray(n);
-		Array!int stack;
-		stack.pushBack(from);
-		v[from] = true;
-
-		while(!stack.empty)
+		int opApply(int delegate(int x) dg) const
 		{
-			int a = stack.popBack;
-			foreach(b; succ(a))
-				if(b.to == to)
-					return true;
-				else if(!v[b.to])
-				{
-					v[b.to] = true;
-					stack.pushBack(b.to);
-				}
+			int r = 0;
+			foreach(e; arr)
+				if((r = dg(e.to)) != 0)
+					break;
+			return r;
 		}
 
-		return false;
-	}
-
-	/** number of path-connected pairs of vertices. */
-	long pathCount() const
-	{
-		size_t cnt = 0;
-		BitArray v;
-
-		for(int a = 0; a < n; ++a)
+		static if(Label.length != 0)
 		{
-			reachable(a, v);
-			cnt += v.count(true) - 1; // "-1" for the a->a loop
-		}
-
-		return cnt;
-	}
-
-	/** determines the vertices reachable from a */
-	BitArray reachable(int a) const
-	{
-		BitArray v;
-		reachable(a, v);
-		return v;
-	}
-
-	/** ditto (can be used to prevent heap alocation) */
-	void reachable(int a, ref BitArray v) const
-	{
-		v.resize(n);
-		v.reset();
-		Array!int stack;
-
-		stack.pushBack(a);
-		v[a] = true;
-
-		while(!stack.empty)
-		{
-			int b = stack.popBack;
-			foreach(c; succ(b))
-				if(!v[c])
-				{
-					v[c] = true;
-					stack.pushBack(c);
-				}
+			int opApply(int delegate(int x, Label l) dg) const
+			{
+				int r = 0;
+				foreach(e; arr)
+					if((r = dg(e.to, e.label)) != 0)
+						break;
+				return r;
+			}
 		}
 	}
 
 	/** range of successors of a vertex */
-	const(HalfEdge)[] succ(int x) const nothrow
+	Range succ(int x) const nothrow
 	{
-		return g[x][];
+		return Range(g[x][]);
 	}
 
 	/** write graph into a .dot file */
@@ -234,12 +172,19 @@ class Graph(bool directed = false, Label...)
 				f.writefln("%s", a);
 
 		for(int a = 0; a < n; ++a)
-			foreach(edge; succ(a))
-				if(directed || a <= edge.to)
-					static if(Label.length)
-						f.writefln("%s%s%s [label=\"%s\"]", a, directed?"->":"--", edge.to, to!string(edge.label));
-					else
-						f.writefln("%s%s%s", a, directed?"->":"--", edge.to);
+			static if(Label.length == 0)
+			{
+				foreach(b; succ(a))
+					if(directed || a <= b)
+						f.writefln("%s%s%s", a, directed?"->":"--", b);
+			}
+			else
+			{
+				foreach(b, l; succ(a))
+					if(directed || a <= b)
+						f.writefln("%s%s%s [label=\"%s\"]", a, directed?"->":"--", b, to!string(l));
+			}
+
 		f.writefln("}");
 	}
 
@@ -253,9 +198,14 @@ class Graph(bool directed = false, Label...)
 	}
 }
 
+
+//////////////////////////////////////////////////////////////////////
+/// graph creation
+//////////////////////////////////////////////////////////////////////
+
 Graph!dir completeGraph(bool dir = false)(int n)
 {
-	auto g = new Graph!dir(n);
+	auto g = Graph!dir(n);
 	for(int i = 0; i < n; ++i)
 		for(int j = i+1; j < n; ++j)
 		{
@@ -268,7 +218,7 @@ Graph!dir completeGraph(bool dir = false)(int n)
 
 Graph!dir lineGraph(bool dir = false)(int n)
 {
-	auto g = new Graph!dir(n);
+	auto g = Graph!dir(n);
 	for(int i = 1; i < n; ++i)
 		g.addEdge(i-1, i);
 	return g;
@@ -279,7 +229,7 @@ Graph!dir randomGraph(bool dir = false)(int n, float ratio)
 	if((dir && ratio >= n-1) || (!dir && ratio >= (n-1)/2))
 		return completeGraph!dir(n);
 
-	auto g = new Graph!dir(n);
+	auto g = Graph!dir(n);
 	while(g.ratio < ratio)
 	{
 		int a = uniform(0, n);
@@ -290,9 +240,26 @@ Graph!dir randomGraph(bool dir = false)(int n, float ratio)
 	return g;
 }
 
+Graph!true randomAcyclicGraph(int n, float ratio)
+{
+	assert(ratio <= (n-1)/2);
+
+	auto g = Graph!true(n);
+	while(g.ratio < ratio)
+	{
+		int a = uniform(0, n);
+		int b = uniform(0, n);
+		if(a > b)
+			swap(a, b);
+		if(a != b && !g.hasEdge(a, b))
+			g.addEdge(a, b);
+	}
+	return g;
+}
+
 Graph!dir randomTree(bool dir = false)(int n)
 {
-	auto g = new Graph!dir(n);
+	auto g = Graph!dir(n);
 	for(int i = 1; i < n; ++i)
 		g.addEdge(i, uniform(0, i));
 	return g;
@@ -300,7 +267,7 @@ Graph!dir randomTree(bool dir = false)(int n)
 
 Graph!dir binaryLeftTree(bool dir = false)(int n)
 {
-	auto g = new Graph!dir(n);
+	auto g = Graph!dir(n);
 	for(int i = 1; i < n; ++i)
 		g.addEdge(i, (i-1)/2);
 	return g;
@@ -308,7 +275,7 @@ Graph!dir binaryLeftTree(bool dir = false)(int n)
 
 Graph!(false, float) randomEuclideanGraph(int n, float size, float cutoff)
 {
-	auto g = new Graph!(false, float)(n);
+	auto g = Graph!(false, float)(n);
 	g.pos.resize(n);
 	g.sizeX = size;
 	g.sizeY = size;
@@ -333,31 +300,180 @@ Graph!(false, float) randomEuclideanGraph(int n, float size, float cutoff)
 	return g;
 }
 
-class FloydWarshall(T)
+
+//////////////////////////////////////////////////////////////////////
+/// reachability problems for unweighted graphs
+//////////////////////////////////////////////////////////////////////
+
+/**
+ * tests if there is a path a->b.
+ * Uses a simple dfs in O(n+m). When multiple doing mutliple such queries,
+ * you should use reachableSet/TransitiveClosure or similar.
+ */
+bool hasPath(G)(auto ref G g, int from, int to) const
 {
-	Array2!T dist;
-	T diameter;
+	if(from == to)
+		return true;
 
-	this(G)(G g)
+	auto v = BitArray(g.n);
+	Array!int stack;
+	stack.pushBack(from);
+	v[from] = true;
+
+	while(!stack.empty)
 	{
-		dist = Array2!T(g.n, g.n, T.max/2);
+		int a = stack.popBack;
+		foreach(b; g.succ(a))
+			if(b == to)
+				return true;
+			else if(!v[b])
+			{
+				v[b] = true;
+				stack.pushBack(b);
+			}
+	}
+
+	return false;
+}
+
+/** determines the vertices reachable from a using a simple dfs in O(n+m) */
+BitArray reachableSet(G)(auto ref G g, int a)
+{
+	BitArray v;
+	g.reachableSet(a, v);
+	return v;
+}
+
+/** ditto (can be used to prevent heap alocation) */
+void reachableSet(G)(auto ref G g, int a, ref BitArray v)
+{
+	v.resize(g.n);
+	v.reset();
+	Array!int stack;
+
+	stack.pushBack(a);
+	v[a] = true;
+
+	while(!stack.empty)
+	{
+		int b = stack.popBack;
+		foreach(c; g.succ(b))
+			if(!v[c])
+			{
+				v[c] = true;
+				stack.pushBack(c);
+			}
+	}
+}
+
+/** compute transitve closure / reachability matrix of a graph */
+struct TransitiveClosure
+{
+	@disable this();
+	@disable this(this);
+
+	Array!BitArray mat;
+
+	this(G)(auto ref G g)
+	{
+		mat.resize(g.n);
 		for(int i = 0; i < g.n; ++i)
-			foreach(e; g.succ(i))
-				dist[i, e.to] = 1;
+			mat[i] = g.reachableSet(i);
+	}
 
-		for(int b = 0; b < g.n; ++b)
-			for(int a = 0; a < g.n; ++a)
-				if(dist[a,b] < T.max/2)
-					for(int c = 0; c < g.n; ++c)
-						dist[a,c] = min(dist[a,c], dist[a,b]+dist[b,c]);
+	bool hasPath(int a, int b) const
+	{
+		return mat[a][b];
+	}
 
-		foreach(a, b, ref d; dist[])
-			if(d == T.max/2)
-				d = T.max;
+	size_t pathCount() const
+	{
+		size_t cnt = 0;
+		foreach(ref s; mat[])
+			cnt += s.count(true);
+		return cnt;
+	}
+}
 
-		diameter = 0;
-		foreach(a, b, d; dist[])
-			diameter = max(diameter, d);
+/**
+ * Answer reachability queries after O(n+m) preprocessing. Meant for large
+ * sparse graphs where building the whole transitive closure is not an option.
+ * The downside is that a query can take up to O(n+m) using a dfs. But an effort
+ * is made to answer many queries much faster.
+ */
+struct Reachability
+{
+	@disable this();
+	@disable this(this);
+
+	SCC scc;
+	Components comp; // (weakly) connected components
+	TopOrder top;
+
+	this(G)(auto ref G g)
+	{
+		scc = SCC(g);
+		comp = Components(scc.condensate);
+		top = TopOrder(scc.condensate);
+	}
+
+	int n() const pure nothrow @property
+	{
+		return cast(int)scc.comp.length;
+	}
+
+	/**
+	 * tests if there is a path a->b.
+	 * returns false if the answer can not be obtained in O(1).
+	 */
+	bool hasPathFast(int a, int b) const
+	{
+		return hasPathEx(a, b) == 1;
+	}
+
+	/**
+	 * tests if there is a path a->b.
+	 * 0 = no, 1 = yes, 2 = unknown
+	 */
+	int hasPathEx(int a, int b) const
+	{
+		// reduce to strongly connected components
+		a = scc.comp[a];
+		b = scc.comp[b];
+
+		// inside the same SCC -> true
+		if(a == b)
+			return 1;
+
+		// disconnected components -> false
+		if(!comp.isConnected(a, b))
+			return 0;
+
+		// topological order wrong -> false
+		if(top.order[a] >= top.order[b])
+			return 0;
+
+		return 2;
+	}
+
+	/**
+	 * number of true/false/unknown paths
+	 * (debugging / performance measurements only)
+	 */
+	void testQuality(ref size_t no, ref size_t yes, ref size_t unknown)
+	{
+		no = yes = unknown = 0;
+
+		for(int a = 0; a < n; ++a)
+			for(int b = 0; b < n; ++b)
+				final switch(hasPathEx(a, b))
+				{
+					case 0: no++; break;
+					case 1: yes++; break;
+					case 2: unknown++; break;
+				}
+
+		assert(yes + no + unknown == n*n);
 	}
 }
 
@@ -366,12 +482,15 @@ class FloydWarshall(T)
  * If it contains cycles, there is no topological order, but an approximation
  * of one is computed which still might be useful for heuristical algorithms.
  */
-class TopOrder
+struct TopOrder
 {
 	Array!int order; // position of vertex in the order
 	Array!int verts; // vertices in topological order
 
-	this(G)(G g)
+	@disable this();
+	@disable this(this);
+
+	this(G)(auto ref G g)
 	{
 		order.resize(g.n);
 		verts.resize(g.n);
@@ -385,7 +504,7 @@ class TopOrder
 				return;
 			v[a] = true;
 			foreach(e; g.succ(a))
-				dfs(e.to);
+				dfs(e);
 			order[a] = --cnt;
 			verts[order[a]] = a;
 		}
@@ -396,18 +515,35 @@ class TopOrder
 	}
 }
 
+/** compute connected components of undirected graph */
+struct Components
+{
+	Array!int comp;
+	int nComps;
+
+	this(G)(auto ref G g)
+	{
+		auto uf = UnionFind(g.n);
+		for(int a = 0; a < g.n; ++a)
+			foreach(b; g.succ(a))
+				uf.join(a, b);
+		comp = uf.components(nComps);
+	}
+
+	bool isConnected(int a, int b) const pure nothrow
+	{
+		return comp[a] == comp[b];
+	}
+}
+
 /** compute strongly connected components of a directed graph */
-class SCC : Graph!true
+struct SCC
 {
 	Array!int comp; // old vertex -> SCC
 	Array!int compSize; // size of individual SCC's
+	Graph!true condensate; // condensed graph, i.e. one vertex per SCC
 
-	int nComps() const nothrow @property
-	{
-		return cast(int)compSize.length;
-	}
-
-	this(G)(G g)
+	this(G)(auto ref G g)
 	{
 		auto visited = BitArray(g.n);
 		auto back = Array!int(g.n);
@@ -427,8 +563,8 @@ class SCC : Graph!true
 
 			foreach(w; g.succ(v))
 			{
-				dfs(w.to);
-				x = min(x, back[w.to]);
+				dfs(w);
+				x = min(x, back[w]);
 			}
 
 			if(x < back[v])
@@ -456,106 +592,62 @@ class SCC : Graph!true
 			dfs(i);
 
 		// build condensed graph
-		super(nComps);
+		condensate = Graph!true(nComps);
 		for(int i = 0; i < g.n; ++i)
 			foreach(e; g.succ(i))
-				if(comp[i] != comp[e.to])
-					addEdge(comp[i], comp[e.to]);
-		this.reduce;
+				if(comp[i] != comp[e])
+					condensate.addEdge(comp[i], comp[e]);
+		condensate.reduce;
+	}
+
+	/** number of strongly connected components */
+	int nComps() const nothrow @property
+	{
+		return cast(int)compSize.length;
+	}
+
+	/** size of the larges component */
+	int largestComponentSize() const nothrow @property
+	{
+		int x = 0;
+		foreach(s; compSize[])
+			x = max(x, s);
+		return x;
 	}
 }
 
-/**
- * Answers reachability queries for directed graphs.
- *
- * Inteded for large graphs where building the complete transitive closure is
- * not an option. Non-exact queries may return false even if a path exists, but
- * only ever take O(1) time. Positive answers are always correct.
- */
-class Reachability
+
+//////////////////////////////////////////////////////////////////////
+/// shortest path algorithms
+//////////////////////////////////////////////////////////////////////
+
+struct FloydWarshall(T)
 {
-	SCC s;
-	Array!long timeA;
-	Array!long timeB;
-	Array!int nodes;
-	TopOrder top;
+	Array2!T dist;
+	T diameter;
 
-	this(G)(G g)
+	@disable this();
+	@disable this(this);
+
+	this(G)(auto ref G g)
 	{
-		s = new SCC(g);
-		top = new TopOrder(s);
+		dist = Array2!T(g.n, g.n, T.max/2);
+		for(int i = 0; i < g.n; ++i)
+			foreach(j; g.succ(i))
+				dist[i, j] = 1;
 
-		timeA.resize(s.n, -1);
-		timeB.resize(s.n, -1);
+		for(int b = 0; b < g.n; ++b)
+			for(int a = 0; a < g.n; ++a)
+				if(dist[a,b] < T.max/2)
+					for(int c = 0; c < g.n; ++c)
+						dist[a,c] = min(dist[a,c], dist[a,b]+dist[b,c]);
 
-		void dfs(int a)
-		{
-			if(timeA[a] != -1)
-				return;
-			timeA[a] = nodes.length;
-			nodes.pushBack(a);
+		foreach(a, b, ref d; dist[])
+			if(d == T.max/2)
+				d = T.max;
 
-			foreach(b; s.succ(a))
-				dfs(b);
-			timeB[a] = nodes.length;
-		}
-
-		// sort edges topological (improvement of this is quite small on random graphs)
-		for(int i = 0; i < s.n; ++i)
-			sort!((a,b)=> top.order[a.to] < top.order[b.to])(s.g[i][]);
-
-		// build tree in topological order
-		foreach(i; top.verts)
-			dfs(i);
-	}
-
-	/** checks wether there is a path a -> b */
-	bool hasPath(bool exact)(int a, int b) const
-	{
-		// replace vertices by there SCC's
-		a = s.comp[a];
-		b = s.comp[b];
-
-		// part of thre forest -> true (including the case a == b)
-		if(timeA[a] <= timeA[b] && timeA[b] <= timeB[a])
-			return true;
-
-		// contradicted by topological order -> false
-		if(top.order(a) > top.order(b))
-			return false;
-
-		// answer not clear -> revert to actual dfs (on the SCC graph)
-		static if(exact)
-			return s.hasPath(a, b);
-		else
-			return false;
-	}
-
-	/** count how many pairs (a,b) are connected by a path */
-	long pathCount(bool exact)() const @property
-		if(exact == true)
-	{
-		long cnt = 0;
-		BitArray v;
-		for(int i = 0; i < s.n; ++i)
-		{
-			s.reachable(i, v);
-			for(int j = 0; j < s.n; ++j)
-				if(v[j])
-					cnt += s.compSize[i] * s.compSize[j];
-		}
-		cnt -= s.comp.length;
-		return cnt;
-	}
-
-	long pathCount(bool exact)() const @property
-		if(exact == false)
-	{
-		long cnt = 0;
-		for(int i = 0; i < s.n; ++i)
-			foreach(j; nodes[timeA[i]..timeB[i]])
-				cnt += s.compSize[i] * s.compSize[j];
-		cnt -= s.comp.length;
-		return cnt;
+		diameter = 0;
+		foreach(a, b, d; dist[])
+			diameter = max(diameter, d);
 	}
 }
