@@ -409,12 +409,47 @@ struct Reachability
 	SCC scc;
 	Components comp; // (weakly) connected components
 	TopOrder top;
+	Array!int up, down; // up/down levels of vertices
+	Array!int timeA, timeB;
+
+	private int time = 1;
 
 	this(G)(auto ref G g)
 	{
 		scc = SCC(g);
 		comp = Components(scc.condensate);
 		top = TopOrder(scc.condensate);
+
+		down.resize(scc.condensate.n);
+		foreach(a; top.verts)
+			foreach(b; scc.condensate.succ(a))
+				down[b] = max(down[b], 1+down[a]);
+
+		up.resize(scc.condensate.n);
+		foreach_reverse(a; top.verts)
+			foreach(b; scc.condensate.succ(a))
+				up[a] = max(up[a], 1+up[b]);
+
+		/*for(int a = 0; a < scc.condensate.n; ++a)
+			foreach(b; scc.condensate.succ(a))
+				assert(down[a] < down[b] && up[a] > up[b]);*/
+
+		timeA.resize(scc.condensate.n);
+		timeB.resize(scc.condensate.n);
+
+		for(int i = 0; i < scc.condensate.n; ++i)
+			if(down[i] == 0) // roots only
+				dfs(i);
+	}
+
+	private void dfs(int a)
+	{
+		if(timeA[a] != 0)
+			return;
+		timeA[a] = time++;
+		foreach(b; scc.condensate.succ(a))
+			dfs(b);
+		timeB[a] = time++;
 	}
 
 	int n() const pure nothrow @property
@@ -450,9 +485,19 @@ struct Reachability
 			return 0;
 
 		// topological order wrong -> false
-		if(top.order[a] >= top.order[b])
+		if(!(top.order[a] < top.order[b]))
 			return 0;
 
+		// level order wrong -> false
+		// NOTE: this is not always strictly stronger than top-order
+		if(!(down[a] < down[b] && up[a] > up[b]))
+			return 0;
+
+		// part of the forest -> true
+		if(timeA[a] < timeA[b] && timeA[b] < timeB[a])
+			return 1;
+
+		// unknown
 		return 2;
 	}
 
@@ -512,6 +557,10 @@ struct TopOrder
 		for(int a = 0; a < g.n; ++a)
 			dfs(a);
 		assert(cnt == 0);
+
+		/*for(int a = 0; a < g.n; ++a)
+			foreach(b; g.succ(a))
+				assert(order[a] < order[b]);*/
 	}
 }
 
