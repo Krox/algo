@@ -568,7 +568,12 @@ struct TopOrder
 struct Components
 {
 	Array!int comp;
-	int nComps;
+	Array!int compSize;
+
+	int nComps() const @property
+	{
+		return cast(int)compSize.length;
+	}
 
 	this(G)(auto ref G g)
 	{
@@ -576,7 +581,12 @@ struct Components
 		for(int a = 0; a < g.n; ++a)
 			foreach(b; g.succ(a))
 				uf.join(a, b);
-		comp = uf.components(nComps);
+
+		comp = uf.components();
+
+		compSize.resize(uf.compCount);
+		for(int i = 0; i < g.n; ++i)
+			compSize[comp[i]]++;
 	}
 
 	bool isConnected(int a, int b) const pure nothrow
