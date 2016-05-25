@@ -7,7 +7,8 @@ private import std.typetuple;
 private import std.typecons;
 private import std.math : sqrt, isNaN;
 private import std.conv : to;
-private import std.algorithm : min, max, move, sort, swap;
+private import std.algorithm : min, max, move, sort, swap, canFind;
+private import std.traits;
 private import jive.array;
 private import jive.bitarray;
 private import jive.unionfind;
@@ -18,8 +19,10 @@ private import jive.unionfind;
  * any graph structure that supports (a subset of) the methods
  * n, m, succ, pred.
  */
-struct Graph(bool directed = false, Label...)
+struct Graph(bool directed = false, _Label...)
 {
+	alias Label = _Label;
+
 	static struct HalfEdge
 	{
 		int to;
@@ -155,8 +158,19 @@ struct Graph(bool directed = false, Label...)
 		return Range(g[x][]);
 	}
 
+	Edge!Label[] listEdges() const
+	{
+		Array!(Edge!Label) r;
+
+		for(int a = 0; a < n; ++a)
+			foreach(e; g[a])
+				if(directed || a <= e.to)
+					r.pushBack(Edge!Label(a, e.to, e.label));
+		return r.release;
+	}
+
 	/** write graph into a .dot file */
-	void writeDot(string filename)
+	void writeDot(string filename, const int[] emphVertices = null, const Edge!Label[] emphEdges = null)
 	{
 		auto f = File(filename, "w");
 		f.writefln("%s %s {", directed?"digraph":"graph", name);
@@ -166,38 +180,66 @@ struct Graph(bool directed = false, Label...)
 			f.writefln("graph [bb=\"0,0,%s,%s\"];", sizeX, sizeY);
 
 		for(int a = 0; a < n; ++a)
+		{
+			f.writef("%s [shape=point]", a);
 			if(a < pos.length)
-				f.writefln("%s [pos=\"%s,%s\"];", a, pos[a][0], pos[a][1]);
-			else
-				f.writefln("%s", a);
+				f.writef(" [pos=\"%s,%s\"]", pos[a][0], pos[a][1]);
+			if(canFind(emphVertices, a))
+				f.writef(" [color=red]");
+			f.writefln("");
+		}
 
 		for(int a = 0; a < n; ++a)
-			static if(Label.length == 0)
+			foreach(e; g[a])
 			{
-				foreach(b; succ(a))
-					if(directed || a <= b)
-						f.writefln("%s%s%s", a, directed?"->":"--", b);
-			}
-			else
-			{
-				foreach(b, l; succ(a))
-					if(directed || a <= b)
-						f.writefln("%s%s%s [label=\"%s\"]", a, directed?"->":"--", b, to!string(l));
-			}
+				int b = e.to;
+				if(!directed && a > b)
+					continue;
+				f.writef("%s%s%s", a, directed?"->":"--", b);
+
+				static if(Label.length > 0)
+					static if(isFloatingPoint!Label)
+						f.writef(" [label=\"%.1f\"]", e.label);
+					else
+						f.writef(" [label=\"%s\"]", to!string(e.label));
+				if(canFind(emphEdges, Edge!Label(a, b, e.label)))
+					f.writef(" [color=red, penwidth=3.0]");
+
+				f.writefln("");
+		}
 
 		f.writefln("}");
 	}
 
 	/** view the graph (using graphviz and eog) */
-	void show()
+	void show(const int[] emphVertices = null, const Edge!Label[] emphEdges = null)
 	{
-		writeDot("tmp_"~name~".dot");
+		writeDot("tmp_"~name~".dot", emphVertices, emphEdges);
 		executeShell(layout~" "~"tmp_"~name~".dot -Tsvg > "~"tmp_"~name~".svg");
 		executeShell("eog "~"tmp_"~name~".svg");
 		executeShell("rm "~"tmp_"~name~".dot "~"tmp_"~name~".svg");
 	}
 }
 
+struct Edge(Label...)
+{
+	int from, to;
+	Label label;
+
+	static if(Label.length == 1)
+	{
+		int opCmp(const Edge b)
+		{
+			if(label[0] < b.label[0]) return -1;
+			if(label[0] > b.label[0]) return +1;
+			if(from < b.from) return -1;
+			if(from > b.from) return +1;
+			if(to < b.to) return -1;
+			if(to > b.to) return +1;
+			return 0;
+		}
+	}
+}
 
 //////////////////////////////////////////////////////////////////////
 /// graph creation
