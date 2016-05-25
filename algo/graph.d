@@ -20,17 +20,15 @@ private import jive.unionfind;
  * n, m, succ, pred.
  */
 struct Graph(bool directed = false, _Label...)
+	if(_Label.length <= 1)
 {
-	alias Label = _Label;
-
-	static struct HalfEdge
-	{
-		int to;
-		Label label;
-	}
+	static if(_Label.length)
+		alias Label = _Label[0];
+	else
+		alias Label = _Label;
 
 	/** actual graph data */
-	private Array!(Array!HalfEdge) g;
+	private Array!(Array!(HalfEdge!Label)) g;
 	private size_t edgeCount;
 
 	/** purely cosmetic hints for viewing the graph, may not be set at all */
@@ -84,7 +82,7 @@ struct Graph(bool directed = false, _Label...)
 	int addVertex()
 	{
 		assert(n < int.max);
-		g.pushBack((Array!HalfEdge).init);
+		g.pushBack((Array!(HalfEdge!Label)).init);
 		return cast(int)(n-1);
 	}
 
@@ -93,9 +91,9 @@ struct Graph(bool directed = false, _Label...)
 	{
 		assert(0 <= from && from < n);
 		assert(0 <= to && to < n);
-		g[from].pushBack(HalfEdge(to, label));
+		g[from].pushBack(HalfEdge!Label(to, label));
 		if(!directed && to != from)
-			g[to].pushBack(HalfEdge(from, label));
+			g[to].pushBack(HalfEdge!Label(from, label));
 		++edgeCount;
 	}
 
@@ -128,7 +126,7 @@ struct Graph(bool directed = false, _Label...)
 
 	struct Range
 	{
-		const(HalfEdge)[] arr;
+		const(HalfEdge!Label)[] arr;
 
 		int opApply(int delegate(int x) dg) const
 		{
@@ -139,7 +137,7 @@ struct Graph(bool directed = false, _Label...)
 			return r;
 		}
 
-		static if(Label.length != 0)
+		static if(_Label.length)
 		{
 			int opApply(int delegate(int x, Label l) dg) const
 			{
@@ -197,12 +195,13 @@ struct Graph(bool directed = false, _Label...)
 					continue;
 				f.writef("%s%s%s", a, directed?"->":"--", b);
 
-				static if(Label.length > 0)
+				static if(_Label.length)
 					static if(isFloatingPoint!Label)
 						f.writef(" [label=\"%.1f\"]", e.label);
 					else
 						f.writef(" [label=\"%s\"]", to!string(e.label));
-				if(canFind(emphEdges, Edge!Label(a, b, e.label)))
+
+				if(canFind(emphEdges, Edge!Label(a, b, e.label)) || !directed && canFind(emphEdges, Edge!Label(b, a, e.label)))
 					f.writef(" [color=red, penwidth=3.0]");
 
 				f.writefln("");
@@ -221,17 +220,47 @@ struct Graph(bool directed = false, _Label...)
 	}
 }
 
-struct Edge(Label...)
+struct HalfEdge(_Label...)
+	if(_Label.length <= 1)
 {
+	static if(_Label.length)
+		alias Label = _Label[0];
+	else
+		alias Label = _Label;
+
+	int to;
+	Label label;
+
+	static if(_Label.length)
+	{
+		int opCmp(const HalfEdge b)
+		{
+			if(label < b.label) return -1;
+			if(label > b.label) return +1;
+			if(to < b.to) return -1;
+			if(to > b.to) return +1;
+			return 0;
+		}
+	}
+}
+
+struct Edge(_Label...)
+	if(_Label.length <= 1)
+{
+	static if(_Label.length)
+		alias Label = _Label[0];
+	else
+		alias Label = _Label;
+
 	int from, to;
 	Label label;
 
-	static if(Label.length == 1)
+	static if(_Label.length)
 	{
 		int opCmp(const Edge b)
 		{
-			if(label[0] < b.label[0]) return -1;
-			if(label[0] > b.label[0]) return +1;
+			if(label < b.label) return -1;
+			if(label > b.label) return +1;
 			if(from < b.from) return -1;
 			if(from > b.from) return +1;
 			if(to < b.to) return -1;
@@ -714,41 +743,5 @@ struct SCC
 		foreach(s; compSize[])
 			x = max(x, s);
 		return x;
-	}
-}
-
-
-//////////////////////////////////////////////////////////////////////
-/// shortest path algorithms
-//////////////////////////////////////////////////////////////////////
-
-struct FloydWarshall(T)
-{
-	Array2!T dist;
-	T diameter;
-
-	@disable this();
-	@disable this(this);
-
-	this(G)(auto ref G g)
-	{
-		dist = Array2!T(g.n, g.n, T.max/2);
-		for(int i = 0; i < g.n; ++i)
-			foreach(j; g.succ(i))
-				dist[i, j] = 1;
-
-		for(int b = 0; b < g.n; ++b)
-			for(int a = 0; a < g.n; ++a)
-				if(dist[a,b] < T.max/2)
-					for(int c = 0; c < g.n; ++c)
-						dist[a,c] = min(dist[a,c], dist[a,b]+dist[b,c]);
-
-		foreach(a, b, ref d; dist[])
-			if(d == T.max/2)
-				d = T.max;
-
-		diameter = 0;
-		foreach(a, b, d; dist[])
-			diameter = max(diameter, d);
 	}
 }
