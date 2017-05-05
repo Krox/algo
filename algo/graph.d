@@ -373,7 +373,83 @@ Graph!(false, float) randomEuclideanGraph(int n, float size, float cutoff)
 
 
 //////////////////////////////////////////////////////////////////////
-/// reachability problems for unweighted graphs
+/// basic problems for undirected unweighted graphs
+//////////////////////////////////////////////////////////////////////
+
+/** tests if a undirected graph is connected */
+bool isConnected(G)(auto ref G g)
+{
+	if(g.n == 0)
+		return true;
+
+	auto v = BitArray(g.n);
+	Array!int stack;
+	stack.pushBack(0);
+	v[0] = true;
+
+	while(!stack.empty)
+	{
+		int a = stack.popBack;
+		foreach(b; g.succ(a))
+			if(!v[b])
+			{
+				v[b] = true;
+				stack.pushBack(b);
+			}
+	}
+
+	for(int i = 0; i < g.n; ++i)
+		if(v[i] == false)
+			return false;
+	return true;
+}
+
+/**
+ * Compute bridges of an undirected graph. I.e. edges which when deleted
+ * increase the number of connected components.
+ */
+Array!(Edge!()) bridges(G)(auto ref G g)
+{
+	Array!(Edge!()) r;
+
+	auto visited = BitArray(g.n);
+	int counter = 0;
+	auto id = Array!int(g.n);
+	auto back = Array!int(g.n);
+
+	void dfs(int v, int parent)
+	{
+	    visited[v] = true;
+	    id[v] = counter++;
+	    back[v] = id[v];
+
+	    foreach(w; g.succ(v))
+		{
+	        if(w == parent) continue;
+
+	        if(!visited[w]) // forward edge
+			{
+	            dfs(w, v);
+	            if(back[w] >  id[v])
+					r.pushBack(Edge!()(v,w));
+	            back[v] = min(back[v], back[w]);
+	        }
+	        else // backward edge
+	            back[v] = min(back[v], id[w]);
+	    }
+	}
+
+
+	for(int i = 0; i < g.n; ++i)
+		if(!visited[i])
+			dfs(i, -1);
+
+	return r;
+}
+
+
+//////////////////////////////////////////////////////////////////////
+/// reachability problems for directed unweighted graphs
 //////////////////////////////////////////////////////////////////////
 
 /**
