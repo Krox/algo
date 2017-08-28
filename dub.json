@@ -1,0 +1,14 @@
+{
+	"name": "algo",
+	"description": "Miscellaneous algorithms from graph theory and geometry.",
+	"authors": ["Simon Bürger"],
+	"homepage": "https://github.com/Krox/algo",
+	"license": "public domain",
+
+	"targetType": "sourceLibrary",
+	"sourcePaths": ["algo"],
+	"importPaths": ["."],
+	"dependencies": {
+		"jive": "*",
+	},
+}

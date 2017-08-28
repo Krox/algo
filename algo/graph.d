@@ -196,10 +196,12 @@ struct Graph(bool directed = false, _Label...)
 				f.writef("%s%s%s", a, directed?"->":"--", b);
 
 				static if(_Label.length)
+				{
 					static if(isFloatingPoint!Label)
 						f.writef(" [label=\"%.1f\"]", e.label);
 					else
 						f.writef(" [label=\"%s\"]", to!string(e.label));
+				}
 
 				if(canFind(emphEdges, Edge!Label(a, b, e.label)) || !directed && canFind(emphEdges, Edge!Label(b, a, e.label)))
 					f.writef(" [color=red, penwidth=3.0]");
