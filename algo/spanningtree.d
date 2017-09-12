@@ -2,9 +2,9 @@ module algo.spanningtree;
 
 private import jive.array;
 private import jive.priorityqueue;
-private import jive.unionfind;
 
 import algo.graph;
+import algo.unionfind;
 
 /**
  * compute a minimum spanning tree (or forest if the graph is disconnected)

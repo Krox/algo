@@ -11,7 +11,7 @@ private import std.algorithm : min, max, move, sort, swap, canFind;
 private import std.traits;
 private import jive.array;
 private import jive.bitarray;
-private import jive.unionfind;
+private import algo.unionfind;
 
 /**
  * Directed or undirected (multi-)graph with optionally labeled edges.
@@ -105,7 +105,7 @@ struct Graph(bool directed = false, _Label...)
 		for(int a = 0; a < n; ++a)
 		{
 			sort!"a.to < b.to"(g[a][]);
-			foreach(i, e, ref bool rem; &g[a].prune)
+			foreach(i, e, ref bool rem; g[a].prune)
 				if(e.to == a || (i < g[a].length-1 && e.to == g[a][i+1].to))
 					rem = true;
 			edgeCount += g[a].length;
@@ -156,7 +156,7 @@ struct Graph(bool directed = false, _Label...)
 		return Range(g[x][]);
 	}
 
-	Edge!Label[] listEdges() const
+	Array!(Edge!Label) listEdges() const
 	{
 		Array!(Edge!Label) r;
 
@@ -164,7 +164,7 @@ struct Graph(bool directed = false, _Label...)
 			foreach(e; g[a])
 				if(directed || a <= e.to)
 					r.pushBack(Edge!Label(a, e.to, e.label));
-		return r.release;
+		return r;
 	}
 
 	/** write graph into a .dot file */
@@ -235,7 +235,7 @@ struct HalfEdge(_Label...)
 
 	static if(_Label.length)
 	{
-		int opCmp(const HalfEdge b)
+		int opCmp(const HalfEdge b) const
 		{
 			if(label < b.label) return -1;
 			if(label > b.label) return +1;
@@ -259,7 +259,7 @@ struct Edge(_Label...)
 
 	static if(_Label.length)
 	{
-		int opCmp(const Edge b)
+		int opCmp(const Edge b) const
 		{
 			if(label < b.label) return -1;
 			if(label > b.label) return +1;
@@ -733,7 +733,7 @@ struct Components
 
 		comp = uf.components();
 
-		compSize.resize(uf.compCount);
+		compSize.resize(uf.nComps);
 		for(int i = 0; i < g.n; ++i)
 			compSize[comp[i]]++;
 	}
